@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const jwt = require("jsonwebtoken");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const app = express();
 const port = process.env.PORT || 5000;
@@ -8,6 +9,21 @@ const port = process.env.PORT || 5000;
 // middleware
 app.use(cors());
 app.use(express.json());
+
+const verifyToken = (req, res, next) => {
+  console.log(req.headers.authorization);
+  if (!req.headers.authorization) {
+    return res.status(401).send({ message: "Unauthorized access" });
+  }
+  const token = req.headers.authorization.split(" ")[1];
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ message: "Unauthorized access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.euk0j.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
@@ -28,6 +44,81 @@ async function run() {
     const db = client.db("bistroDB");
     const menuCollection = db.collection("menu");
     const reviewsCollection = db.collection("reviews");
+    const cartsCollection = db.collection("carts");
+    const userCollection = db.collection("users");
+
+    // middleware
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const isAdmin = user?.role === "admin";
+      if (!isAdmin) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+      next();
+    };
+    // JWt--------------------------------------------------------------------------------
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "1h",
+      });
+      res.send(token);
+    });
+
+    // User related AIPs------------------------------------------------------------------
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
+      const result = await userCollection.find().toArray();
+
+      res.send(result);
+    });
+
+    app.get("/users/admin/:email", verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (!email === req.decoded.email) {
+        return res.status(403).send({ message: "Forbidden access" });
+      }
+
+      const query = { email };
+      const user = await userCollection.findOne(query);
+      let admin = false;
+      if (user) {
+        admin = user?.role === "admin";
+      }
+
+      res.send({ admin });
+    });
+
+    app.post("/users", async (req, res) => {
+      const userInfo = req.body;
+      const email = userInfo.email;
+      const filter = { email };
+      const existingEmail = await userCollection.findOne(filter);
+      if (existingEmail)
+        return res.send({ message: "This user is already exists." });
+      const result = await userCollection.insertOne(userInfo);
+      res.send(result);
+    });
+
+    app.patch("/user/admin/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          role: "admin",
+        },
+      };
+      const result = await userCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+
+    app.delete("/user/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const result = await userCollection.deleteOne(filter);
+      res.send(result);
+    });
 
     // Menu related APIs-------------------------------------------------------------------
     app.get("/menu", async (req, res) => {
@@ -38,6 +129,26 @@ async function run() {
     // reviews related APIs----------------------------------------------------------------
     app.get("/reviews", async (req, res) => {
       const result = await reviewsCollection.find().toArray();
+      res.send(result);
+    });
+
+    // carts related APIs----------------------------------------------------------------
+    app.get("/carts", async (req, res) => {
+      const email = req.query.email;
+      const query = { user: email };
+      const result = await cartsCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.post("/carts", async (req, res) => {
+      const result = await cartsCollection.insertOne(req.body);
+      res.send(result);
+    });
+
+    app.delete("/carts/:id", async (req, res) => {
+      const cartId = req.params.id;
+      const query = { _id: new ObjectId(cartId) };
+      const result = await cartsCollection.deleteOne(query);
       res.send(result);
     });
 
