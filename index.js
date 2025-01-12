@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 const verifyToken = (req, res, next) => {
-  console.log(req.headers.authorization);
+  // console.log(req.headers.authorization);
   if (!req.headers.authorization) {
     return res.status(401).send({ message: "Unauthorized access" });
   }
@@ -126,6 +126,47 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/menu/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: id };
+      // const query = { _id: new ObjectId(id) };
+      const result = await menuCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.post("/menu", verifyToken, verifyAdmin, async (req, res) => {
+      const menuItem = req.body;
+      const result = await menuCollection.insertOne(menuItem);
+      res.send(result);
+    });
+
+    app.patch("/menu/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const item = req.body;
+      const query = { _id: id };
+      // const query = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          name: item.name,
+          image: item.image,
+          category: item.category,
+          price: item.price,
+          recipe: item.recipe,
+        },
+      };
+      const result = await menuCollection.updateOne(query, updatedDoc);
+      res.send(result);
+    });
+
+    app.delete("/menu/:id", async (req, res) => {
+      const id = req.params.id;
+      console.log(id);
+
+      const query = { _id: id };
+      // const query = { _id: new ObjectId(id) };
+      const result = await menuCollection.deleteOne(query);
+      res.send(result);
+    });
     // reviews related APIs----------------------------------------------------------------
     app.get("/reviews", async (req, res) => {
       const result = await reviewsCollection.find().toArray();
