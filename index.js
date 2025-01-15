@@ -164,7 +164,7 @@ async function run() {
 
     app.delete("/menu/:id", async (req, res) => {
       const id = req.params.id;
-      console.log(id);
+      // console.log(id);
 
       const query = { _id: id };
       // const query = { _id: new ObjectId(id) };
@@ -201,7 +201,7 @@ async function run() {
     app.post("/create-payment-intent", async (req, res) => {
       const { price } = req.body;
       const amount = parseInt(price * 100);
-      console.log(amount, "inside amount intent");
+      // console.log(amount, "inside amount intent");
 
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,
@@ -239,6 +239,40 @@ async function run() {
       };
       const deleteResult = await cartsCollection.deleteMany(query);
       res.send({ paymentResult, deleteResult });
+    });
+
+    // stats or analytics
+    app.get("/admin-stats", async (req, res) => {
+      const users = await userCollection.estimatedDocumentCount();
+      const menuItem = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentCollection.estimatedDocumentCount();
+
+      // get total price----------------------------------
+      // this is not the best way
+      // const payment = await paymentCollection.find().toArray();
+      // const totalPrice = payment.reduce((total, item) => total + item.price, 0);
+
+      const result = await paymentCollection
+        .aggregate([
+          {
+            $group: {
+              _id: null,
+              totalRevenue: {
+                $sum: "$price",
+              },
+            },
+          },
+        ])
+        .toArray();
+
+      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+
+      res.send({
+        users,
+        menuItem,
+        orders,
+        revenue,
+      });
     });
 
     // Send a ping to confirm a successful connection
